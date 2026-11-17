@@ -57,6 +57,44 @@ async function request(path, { method = 'GET', body, token, form } = {}) {
   return localiseUploads(payload);
 }
 
+// ─── File uploads ────────────────────────────────────────────────────────────
+// Locally the backend stores files on disk ("server" mode). On Vercel it uses
+// Vercel Blob ("blob" mode): the browser asks the API for a short-lived token
+// and sends the file straight to Blob storage, so large videos and .glb models
+// aren't stopped by the 4.5 MB request limit of Vercel functions.
+let uploadMode;
+function getUploadMode() {
+  uploadMode ??= request('/api/uploads/config')
+    .then((r) => r.data?.mode || 'server')
+    .catch(() => 'server');
+  return uploadMode;
+}
+
+const contentTypeFor = (kind, file) =>
+  kind === 'model' ? 'model/gltf-binary' : file.type || 'application/octet-stream';
+
+async function uploadFile(kind, field, file, token, shape) {
+  if ((await getUploadMode()) === 'blob') {
+    const { upload } = await import('@vercel/blob/client');
+    try {
+      const blob = await upload(`artisoul/${kind}/${file.name.replace(/[^\w.-]+/g, '-')}`, file, {
+        access: 'public',
+        handleUploadUrl: `${BASE}/api/uploads/blob-token`,
+        headers: { Authorization: `Bearer ${token}` },
+        clientPayload: kind,
+        contentType: contentTypeFor(kind, file),
+        multipart: file.size > 8 * 1024 * 1024,
+      });
+      return { success: true, data: shape(blob.url, file) };
+    } catch (err) {
+      throw new ApiError(err?.message || 'Upload failed', 0);
+    }
+  }
+  const form = new FormData();
+  form.append(field, file);
+  return request(`/api/uploads/${kind}`, { method: 'POST', body: form, token, form: true });
+}
+
 export const api = {
   health: () => request('/api/health'),
 
@@ -87,21 +125,15 @@ export const api = {
   },
 
   uploads: {
-    model: (file, token) => {
-      const form = new FormData();
-      form.append('model', file);
-      return request('/api/uploads/model', { method: 'POST', body: form, token, form: true });
-    },
-    media: (file, token) => {
-      const form = new FormData();
-      form.append('media', file);
-      return request('/api/uploads/media', { method: 'POST', body: form, token, form: true });
-    },
-    image: (file, token) => {
-      const form = new FormData();
-      form.append('image', file);
-      return request('/api/uploads/image', { method: 'POST', body: form, token, form: true });
-    },
+    model: (file, token) =>
+      uploadFile('model', 'model', file, token, (url) => ({ model_url: url })),
+    media: (file, token) =>
+      uploadFile('media', 'media', file, token, (url, f) => ({
+        url,
+        media_type: f.type.startsWith('video/') ? 'video' : 'image',
+      })),
+    image: (file, token) =>
+      uploadFile('image', 'image', file, token, (url) => ({ image_url: url })),
   },
 
   orders: {
