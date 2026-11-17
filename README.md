@@ -59,6 +59,14 @@ ArtiSoul/
 
 ---
 
+## Deploying
+
+The app deploys to Vercel as a single project (static React build + the
+Express API as a serverless function + Vercel Blob for uploads, with a hosted
+MySQL database). Step-by-step guide: **[DEPLOY_VERCEL.md](DEPLOY_VERCEL.md)**.
+
+---
+
 ## Running it
 
 Two terminals. Backend first.
