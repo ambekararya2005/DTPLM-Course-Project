@@ -24,23 +24,36 @@ const common = {
 };
 
 // DATABASE_URL (mysql://user:pass@host:port/db) wins if set; otherwise the
-// individual DB_* variables are used, as in local development.
-const pool = process.env.DATABASE_URL
-  ? mysql.createPool({ uri: process.env.DATABASE_URL, ...common })
-  : mysql.createPool({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      port: process.env.DB_PORT || 3306,
-      ...common,
-    });
+// individual DB_* variables are used, as in local development. DB_NAME, when
+// set, overrides the database named in DATABASE_URL.
+function connectionConfig() {
+  if (process.env.DATABASE_URL) {
+    const u = new URL(process.env.DATABASE_URL);
+    return {
+      host: decodeURIComponent(u.hostname),
+      port: Number(u.port) || 3306,
+      user: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+      database: process.env.DB_NAME || decodeURIComponent(u.pathname.slice(1)) || undefined,
+    };
+  }
+  return {
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 3306,
+  };
+}
+
+const config = { ...connectionConfig(), ...common };
+const pool = mysql.createPool(config);
 
 // Quick startup check so a bad .env fails loudly instead of on the first request.
 async function testConnection() {
   try {
     const conn = await pool.getConnection();
-    console.log('✅ MySQL connected:', process.env.DB_NAME || '(DATABASE_URL)');
+    console.log('✅ MySQL connected:', config.database);
     conn.release();
   } catch (err) {
     console.error('❌ MySQL connection failed:', err.message);
@@ -48,4 +61,4 @@ async function testConnection() {
   }
 }
 
-module.exports = { pool, testConnection };
+module.exports = { pool, testConnection, config };

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { pool } = require('./db');
+const mysql = require('mysql2/promise');
+const { pool, config } = require('./db');
 
 // Creates the schema on an empty database the first time the API is used, so a
 // fresh cloud database (TiDB, Aiven, Railway...) needs no manual SQL step.
@@ -19,7 +20,21 @@ function statements(sql) {
     .filter(Boolean);
 }
 
+// The database itself may not exist yet (e.g. DB_NAME=artisoul on a fresh
+// TiDB Cloud cluster), so create it over a connection that doesn't select one.
+async function ensureDatabase() {
+  if (!config.database) throw new Error('No database selected: set DB_NAME or add one to DATABASE_URL');
+  const { database, connectionLimit, waitForConnections, queueLimit, ...rest } = config;
+  const conn = await mysql.createConnection(rest);
+  try {
+    await conn.query('CREATE DATABASE IF NOT EXISTS ?? CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', [database]);
+  } finally {
+    await conn.end();
+  }
+}
+
 async function migrate() {
+  await ensureDatabase();
   const [rows] = await pool.query(
     `SELECT COUNT(*) AS n FROM information_schema.TABLES
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?)`,
