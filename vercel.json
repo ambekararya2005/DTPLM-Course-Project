@@ -6,11 +6,18 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "database/artisoul_full_schema.sql"
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/((?!api/|uploads/|assets/).*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/((?!api/|uploads/|assets/).*)",
+      "destination": "/index.html"
+    }
   ]
 }
